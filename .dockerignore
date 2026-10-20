@@ -1,0 +1,7 @@
+.*
+!.env.example
+**/__pycache__
+**/*.pyc
+frontend/node_modules
+frontend/.next
+frontend/tsconfig.tsbuildinfo

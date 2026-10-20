@@ -1,0 +1,47 @@
+name: Docker integration
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      COMPOSE_PROJECT_NAME: mini-catalog-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Create isolated test configuration
+        run: python3 -m tests.docker_ci configure
+      - name: Check Docker and build production images
+        run: |
+          docker version
+          docker compose version
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml build
+      - name: Build test targets and start two replicas per application service
+        run: |
+          docker compose --profile test build bot tests
+          docker compose up -d --build --scale backend=2 --scale bot=2
+      - name: Check health, replicas, recovery, storage and isolated pytest twice
+        run: python3 -m tests.docker_ci check
+      - name: Container status and logs on failure
+        if: failure()
+        run: |
+          docker compose --profile test ps -a
+          docker compose --profile test ps -a -q | xargs -r docker inspect --format '{{.Name}} {{json .State}}'
+          docker compose --profile test logs --no-color --tail 150
+      - name: Remove CI containers, volumes and test configuration
+        if: always()
+        run: |
+          trap 'rm -f .env' EXIT
+          docker compose --profile test down --volumes --remove-orphans --timeout 15

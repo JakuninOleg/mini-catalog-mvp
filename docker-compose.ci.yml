@@ -1,0 +1,7 @@
+# Test transport only; the production bot image is also built in the workflow.
+services:
+  bot:
+    build:
+      target: ci
+    environment:
+      TELEGRAM_TEST_API_BASE: http://bot:8001/telegram-api
